@@ -1,0 +1,26 @@
+QA props: 10 moved, 0 dropped
+    fir_sapling_medium @ -> moved 5.0 m off H1
+    fir_sapling_medium @ -> moved 4.0 m off H2
+    grass_bermuda_01 @.009 -> moved 2.0 m off H4
+    grass_bermuda_01 @.010 -> moved 1.5 m off H4
+    grass_bermuda_01 @.011 -> moved 1.5 m off H4
+    planter_box_02 @.001 -> moved 3.0 m off H4
+    boulder_01 @ -> moved 2.5 m off H3
+    boulder_01 @.001 -> moved 5.5 m off H3
+    wine_barrel_01 @ -> moved 2.5 m off H4
+    grass_bermuda_01 @.010 <-> wine_barrel_01 @ separated 0.0 m
+BUILT Maple Court: 516 objects, 16 shelf materials, 15 shelf models, 4.5s
+  physics: 409 static, 28 hulls, 9 trunks, 30 no-collision   0.0s
+  player + eye camera                        0.0s
+  python controller + flight recorder        0.3s
+  game settings + RENDERED viewport on the eye   0.3s
+Info: Saved as "maple-court-v2-walk.blend"
+  saved maple-court-v2-walk.blend {'FINISHED'}  26.2s
+spawn (0.0, -42.0, 0.9) facing (0.0, 1.0) -> the street runs north: OK
+WALKABLE v2 ready. total 26.2s
+render maple-court-v2b-street.png: {'FINISHED'} 9.0s
+render maple-court-v2b-h1.png: {'FINISHED'} 3.7s
+render maple-court-v2b-h3.png: {'FINISHED'} 15.0s
+render maple-court-v2b-h4.png: {'FINISHED'} 15.6s
+saved {'FINISHED'}
+DONE

@@ -1,0 +1,16 @@
+test8 aerial: {'FINISHED'} 68.1s
+v1c maple-court-v1c-aerial.png: {'FINISHED'} 20.1s
+v1c maple-court-v1c-street.png: {'FINISHED'} 1.2s
+saved v1c {'FINISHED'}
+v1d maple-court-v1d-aerial.png: {'FINISHED'} 21.1s
+v1d maple-court-v1d-street.png: {'FINISHED'} 1.2s
+saved v1d {'FINISHED'}
+v1e maple-court-v1e-aerial.png: {'FINISHED'} 31.8s
+v1e maple-court-v1e-street.png: {'FINISHED'} 2.9s
+saved v1e {'FINISHED'}
+final maple-court-v1-final-aerial.png: {'FINISHED'} 32.9s
+final maple-court-v1-final-street.png: {'FINISHED'} 4.9s
+saved final {'FINISHED'}
+final2 maple-court-v1-aerial-final.png: {'FINISHED'} 36.2s
+final2 maple-court-v1-street-final.png: {'FINISHED'} 3.0s
+saved final2 {'FINISHED'}

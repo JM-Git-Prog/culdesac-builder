@@ -1,0 +1,9 @@
+  physics: 409 static, 28 hulls, 9 trunks, 30 no-collision   0.0s
+  player + eye camera                        0.0s
+  python controller + flight recorder        0.1s
+  game settings + RENDERED viewport on the eye   0.1s
+Info: Saved as "maple-court-v2-walk.blend"
+  saved maple-court-v2-walk.blend {'FINISHED'}   4.1s
+spawn (0.0, -42.0, 0.9) facing (0.0, 1.0) -> the street runs north: OK
+WALKABLE v2 ready. total 4.1s
+DONE

@@ -1,0 +1,27 @@
+brief: E:\Software Development\Video Game Development\03 Projects\Cul-de-sac\brief-test.json
+QA props: 21 moved, 0 dropped
+    grass_bermuda_01 @ -> moved 1.5 m off H1
+    grass_bermuda_01 @.001 -> moved 2.0 m off H1
+    grass_bermuda_01 @.002 -> moved 2.5 m off H1
+    planter_box_01 @ -> moved 2.5 m off H1
+    boulder_01 @ -> moved 4.0 m off H1
+    boulder_01 @.001 -> moved 5.5 m off H1
+    celandine_01 @.001 -> moved 3.0 m off H3
+    grass_bermuda_01 @.006 -> moved 1.5 m off H3
+    grass_bermuda_01 @.007 -> moved 2.0 m off H3
+    grass_bermuda_01 @.008 -> moved 1.5 m off H3
+    planter_box_01 @.001 -> moved 3.0 m off H3
+    planter_box_01 @.001 -> moved 0.5 m off H4
+    grass_bermuda_01 @.009 -> moved 2.0 m off H4
+    grass_bermuda_01 @.010 -> moved 1.5 m off H4
+    grass_bermuda_01 @.011 -> moved 2.0 m off H4
+    planter_box_02 @ -> moved 3.0 m off H4
+    celandine_01 @.003 -> moved 4.0 m off H4
+    covered_car @ -> moved 0.5 m off H4
+    boulder_01 @ <-> boulder_01 @.001 separated 1.3 m
+    grass_bermuda_01 @.005 <-> celandine_01 @.001 separated 0.0 m
+    grass_bermuda_01 @.009 <-> planter_box_02 @ separated 0.3 m
+BUILT Cul-de-Sac Homes: cul-de-sac, 5 houses (modern, colonial, ranch, cottage, ranch), 609 objects, 13 shelf materials, 12 shelf models, sky abandoned_pathway, 5.6s
+render brief1-aerial.png: {'FINISHED'} 21.9s
+render brief1-street.png: {'FINISHED'} 2.0s
+DONE

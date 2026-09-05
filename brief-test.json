@@ -1,0 +1,14 @@
+{
+  "name": "Cul-de-Sac Homes",
+  "layout": "cul-de-sac",
+  "house_count": 5,
+  "houses": [
+    {"style": "modern", "stories": 2, "wall": "brick", "wall_color": "white", "roof": "flat", "garage": "left", "porch": true},
+    {"style": "colonial", "stories": 2, "wall": "brick", "wall_color": "red", "roof": "shingle", "garage": "right", "porch": false},
+    {"style": "ranch", "stories": 1, "wall": "brick", "wall_color": "beige", "roof": "flat", "garage": "left", "porch": true},
+    {"style": "cottage", "stories": 1, "wall": "stone", "wall_color": "grey", "roof": "shingle", "garage": "right", "porch": true},
+    {"style": "ranch", "stories": 1, "wall": "brick", "wall_color": "beige", "roof": "flat", "garage": "left", "porch": false}
+  ],
+  "trees": "some",
+  "sky": "clear"
+}

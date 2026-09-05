@@ -1,0 +1,30 @@
+# The Neighbourhood Builder — what git should NOT carry.
+#
+# 2026-09-04: this folder held the house builder (build-neighbourhood.py) and the
+# service (neighbourhood-service.py) on ONE DISK with no history and no remote, while
+# every other part of the project was in git. The code is small; the output is 5.5 GB.
+# So: track the CODE, never the renders.
+
+# Job output — 5.5 GB of candidate renders, briefs, logs and UPBGE consoles.
+# Regenerable by definition: every one of these is a build the service can run again.
+jobs/
+
+# Loose renders and captures left beside the scripts
+*.png
+*.jpg
+*.jpeg
+*.hdr
+*.glb
+*.blend
+*.blend1
+
+# Python and editor noise
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# The service's own rolling log
+service-log.txt
+*-console.txt
