@@ -225,7 +225,15 @@ try:
             name = "candidate-%d.png" % (i + 1)
             sc.render.filepath = os.path.join(job, name)
             bpy.ops.render.render(write_still=True)
-            cands.append({"tag": "c%d" % (i + 1), "image": os.path.join(job, name), "house": brief["houses"][i] if i < len(brief.get("houses", [])) else {}, "summary": summary[i]})
+            # THE PICTURE IS A PROMISE (2026-09-05). Carry the RESOLVED width and depth of the house
+            # actually rendered into the candidate record, so choosing it builds THAT house. W and D
+            # are drawn per brief (rnd.uniform in norm_house) and the column count follows the width -
+            # so identical words gave SIX columns as candidate 1 of 3 and FOUR as house 8 of 8. Same
+            # house, different draw. Now the draw travels with the choice instead of being re-rolled.
+            chosen = dict(brief["houses"][i]) if i < len(brief.get("houses", [])) else {}
+            if chosen:
+                chosen["W"] = round(h["spec"]["W"], 3); chosen["D"] = round(h["spec"]["D"], 3)
+            cands.append({"tag": "c%d" % (i + 1), "image": os.path.join(job, name), "house": chosen, "summary": summary[i]})
             log.write("render candidate %d (%s) %5.1fs\n" % (i + 1, h["name"], time.time() - t)); log.flush()
             put(stage="picture %d/%d" % (i + 1, len(houses)), images=[c["image"] for c in cands])
         log.write("PREVIEW DONE %.1fs\n" % (time.time() - t0)); log.close()

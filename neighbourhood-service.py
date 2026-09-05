@@ -211,7 +211,7 @@ def storeys(h, style):
     return n if n in (1, 2, 3) else (2 if style in ("colonial", "modern", "farmhouse") else 1)
 
 
-def normalise(b, text="", revise=False, candidates=False):
+def normalise(b, text="", revise=False, candidates=False, pinned=None):
     # Decision (2026-09-03, John: "tell me what it couldn't use"): a REAL substitution is John's word
     # PRESENT and non-empty and not one this field accepts - a field the model left blank and a default
     # filled is not that, and gets no entry. "used" for house fields is resolved at the bottom, after
@@ -242,9 +242,18 @@ def normalise(b, text="", revise=False, candidates=False):
                                     ("garage", h.get("garage"), ("left", "right", "none"))):
             if isinstance(raw, str) and raw.strip() and raw not in allowed:
                 pending.append((hi, field, raw.strip()[:60]))
-        out["houses"].append({"style": style, "stories": storeys(h, style), "wall": wall, "wall_color": wall_color,
-                              "roof": roof, "garage": garage,
-                              "porch": bool(h.get("porch", False)), "features": leftovers(h.get("features"))})
+        nh = {"style": style, "stories": storeys(h, style), "wall": wall, "wall_color": wall_color,
+              "roof": roof, "garage": garage,
+              "porch": bool(h.get("porch", False)), "features": leftovers(h.get("features"))}
+        # THE PICTURE IS A PROMISE (2026-09-05). A house John chose off the garage wall carries the
+        # WIDTH and DEPTH it was actually rendered at, and the column count follows the width. This
+        # rebuild names every field it keeps, so anything NOT named here is silently dropped - which
+        # is precisely how W and D were lost between the picture and the build, and why the colonial
+        # he picked with six columns was raised on his street with four. An allowlist again.
+        for dim in ("W", "D"):
+            if isinstance(h.get(dim), (int, float)) and not isinstance(h.get(dim), bool):
+                nh[dim] = float(h[dim])
+        out["houses"].append(nh)
     want = b.get("house_count") if isinstance(b.get("house_count"), int) and 1 <= b.get("house_count") <= 8 else None
     if revise:
         want = len(out["houses"]) or want          # an edit ("make house 1 red") must not re-count the street from its words
@@ -271,11 +280,17 @@ def normalise(b, text="", revise=False, candidates=False):
     # NOT on the candidates path (2026-09-04): there the three houses are three takes on ONE house
     # John asked for, so a shared style is the POINT, not a defect. Left on, this guard rewrote
     # candidate 3 of an all-colonial set into a ranch — undoing the prompt fix at the code layer.
+    # A house John PICKED off the garage wall is pinned and never rewritten (2026-09-05). He chose
+    # a white colonial with a shingle roof and a full-width porch; his street already had two
+    # colonials, so this guard made his the third, reassigned it to georgian, and gave it a clay
+    # roof and no porch. The guard is for a street he did not design - never for the one house he
+    # deliberately chose. Skipping it still counts toward `seen`, so the rest of the street is
+    # unaffected.
     if not candidates:
         seen = {}
         for i, h in enumerate(out["houses"]):
             seen[h["style"]] = seen.get(h["style"], 0) + 1
-            if seen[h["style"]] > 2:
+            if seen[h["style"]] > 2 and i != pinned:
                 for st in STYLES:
                     if seen.get(st, 0) == 0:
                         h["style"] = st; seen[st] = 1; seen[h["style"]] = seen.get(h["style"], 1)
@@ -493,7 +508,8 @@ def start_job(text, base=None, house=None, preview=False, image=None):
             if current is None: raise RuntimeError("a chosen house needs the place it joins (base)")
             brief = json.loads(json.dumps(current))
             brief["houses"] = list(brief.get("houses", [])) + [house]
-            brief = normalise(brief, text, revise=True)
+            # the chosen house is appended LAST, so its index is the one to pin
+            brief = normalise(brief, text, revise=True, pinned=len(brief["houses"]) - 1)
             brief["source"] = "chosen on the garage wall"; brief["request"] = text; brief["revised_from"] = current.get("request", "")
         else:
             brief = write_brief(text, current)

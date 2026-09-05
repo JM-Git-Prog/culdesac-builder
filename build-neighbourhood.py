@@ -79,6 +79,18 @@ ROOF_TEX = {"clay": ["clay_roof_tiles", "clay_roof_tiles_02", "clay_roof_tiles_0
             # thing on the shelf to an asphalt shingle roof seen from the street.
             "shingle": ["roof_slates_02", "roof_slates_03", "grey_roof_tiles", "grey_roof_01"]}
 
+def given_dim(v, lo, hi):
+    """A width or depth carried over from the picture John chose (2026-09-05). Honoured when it is
+    sane for the style, otherwise the fresh draw is used. Exists because W and D are drawn per brief,
+    the column count follows the width, and so the SAME words produced a six-column house in the
+    candidate picture and a four-column one when built onto a longer street. The picture is a
+    promise: if John picked that house, he gets that house, not another roll of the dice."""
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return f if lo * 0.6 <= f <= hi * 1.6 else None
+
 def norm_house(i, h):
     st = STYLE.get(str(h.get("style", "")).lower(), STYLE["colonial"])
     g = str(h.get("garage", "auto")).lower()
@@ -91,7 +103,11 @@ def norm_house(i, h):
     if roof_mat not in ROOF_TEX:
         roof_mat = st["roof_mat"]
     stories = int(h["stories"]) if str(h.get("stories", "")).strip() in ("1", "2", "3") else st["stories"]   # the brief's count wins; else the style's usual
-    return dict(style=[k for k, v in STYLE.items() if v is st][0], W=rnd.uniform(*st["W"]), D=rnd.uniform(*st["D"]),
+    # draw both ALWAYS, then override - so honouring a carried-over size never shifts the random
+    # stream for the houses after it, and an unchosen street still builds exactly as it did before
+    w_draw, d_draw = rnd.uniform(*st["W"]), rnd.uniform(*st["D"])
+    return dict(style=[k for k, v in STYLE.items() if v is st][0],
+                W=given_dim(h.get("W"), *st["W"]) or w_draw, D=given_dim(h.get("D"), *st["D"]) or d_draw,
                 stories=stories, roof=ROOF_SHAPE_FOR.get(roof_mat, st["roof"] if roof_mat != "flat" else "flat"),
                 wall=(str(h.get("wall", st["wall"])).lower() if str(h.get("wall", "")).lower() in WALL_TEX else st["wall"]),
                 color=str(h.get("wall_color", "natural")).lower(),
