@@ -171,9 +171,14 @@ def export_world(brief, houses, shelf=None, sky_id=None, sky_key="clear"):
                    "_note": "DATA the chat writes: sky/sun/spawn/controls. Read by app/src/modules/environment/outdoor.ts."}
     manifest = {
         "_note": "Composed by the Neighbourhood Builder (UPBGE 0.50 headless, run-brief.py) from the sentence in brief.json - "
-                 "mesh only, the Starlite Diner shape: the dev server's worlds plugin binds 0-world.glb next to this file "
-                 "by filename convention; no splat exists, so the GLB's own materials render (showRealMaterial). "
-                 "Origin is on the road looking toward the bulb; ground top is y=0.",
+                 "mesh only, the Starlite Diner shape: the dev server's worlds plugin binds the NEWEST indexed world "
+                 "manifest and its matching GLB - NOT 0-world.glb by filename convention (see app/vite.config.ts, "
+                 "readWorldManifest -> latestIndexedFile); no splat exists, so the GLB's own materials render "
+                 "(showRealMaterial). Origin is on the road looking toward the bulb; ground top is y=0. "
+                 "[Corrected 2026-09-05: this note claimed the viewer binds 0-world.glb by filename convention. That was "
+                 "false, and because it is stamped into EVERY generated world.json it had already misled a reader into "
+                 "believing John had been looking at version 0 of his neighbourhood while versions 1-3 sat beside it. "
+                 "It was stale Starlite boilerplate that nobody had ever checked against the viewer code.]",
         "display_name": name, "world_id": "neighbourhood-%s-v%d" % (slug, ver), "model": "neighbourhood-builder", "version": ver,
         "brief": brief, "houses": houses, "environment": environment,
         "assets": {"splats": {"spz_urls": {}, "semantics_metadata": {"metric_scale_factor": 1, "ground_plane_offset": 0, "flip_y": False}},
