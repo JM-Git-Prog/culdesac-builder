@@ -92,6 +92,10 @@ def given_dim(v, lo, hi):
     return f if lo * 0.6 <= f <= hi * 1.6 else None
 
 def norm_house(i, h):
+    # One persistent world (decision 22): a house's random draws depend on ITS OWN spec and lot, never on the
+    # whole brief - before 2026-09-10 the seed was the entire brief, so every new order re-rolled every house
+    # (bulb houses drifted up to 1.3 m between v7 and v8, street houses changed size by centimetres).
+    rnd.seed(zlib.crc32(("house|%d|%s" % (i, json.dumps(h, sort_keys=True, default=str))).encode("utf-8")))
     st = STYLE.get(str(h.get("style", "")).lower(), STYLE["colonial"])
     g = str(h.get("garage", "auto")).lower()
     garage = {"left": 'L', "right": 'R', "none": None}.get(g, 'R' if i % 2 == 0 else 'L')
@@ -114,10 +118,35 @@ def norm_house(i, h):
                 roof_mat=roof_mat, trim=st["trim"], garage=garage, porch=bool(h.get("porch", st["porch"])), chimney=st["chimney"],
                 features=[p.strip()[:80] for p in (h.get("features") or []) if isinstance(p, str) and p.strip()][:12])
 
-HOUSE_SPECS = [norm_house(i, h) for i, h in enumerate((brief.get("houses") or DEFAULT_BRIEF["houses"])[:8])]
+# ---------------------------------------------------------------- THE PLAT (John, 2026-09-10: "Phase 1 plat")
+# Phase 1 of Mr. John's Neighborhood: the cul-de-sac (four lots on the bulb), the main street south to a T at
+# CROSS_Y, a cross street along CROSS_X, and sixteen street lots - the original four plus twelve empty ones,
+# every empty lot with road, curb and sidewalk already in and a signboard on it (decision 25). Lots are filled
+# in list order; nothing already built ever moves. Phase 2 = append lots and a second cross street here.
+# Yaw: 0 = the front faces -y (south), 90 = faces +x (east), 180 = faces +y (north), 270 = faces -x (west).
+PLAT_PHASE = 1
+CROSS_Y = -80.0
+CROSS_X = (-80.0, 80.0)
+def _lot(lid, x, y, yaw, side): return {"id": lid, "pos": (float(x), float(y), 0.0), "yaw": float(yaw), "side": side}
+STREET_LOTS = [
+    _lot("L1", -22, -22, 90, "west"), _lot("L2", 22, -22, 270, "east"),        # the original four (v0-v7): unchanged
+    _lot("L3", -22, -40, 90, "west"), _lot("L4", 22, -40, 270, "east"),
+    _lot("L5", -22, -58, 90, "west"), _lot("L6", 22, -58, 270, "east"),        # Phase 1: the main street continues
+    _lot("L7", -44, -66, 0, "north"), _lot("L8", 44, -66, 0, "north"),         # cross street, north side, fronts face south
+    _lot("L9", -66, -66, 0, "north"), _lot("L10", 66, -66, 0, "north"),
+    _lot("L11", -22, -94, 180, "south"), _lot("L12", 22, -94, 180, "south"),   # cross street, south side, fronts face north
+    _lot("L13", -44, -94, 180, "south"), _lot("L14", 44, -94, 180, "south"),
+    _lot("L15", -66, -94, 180, "south"), _lot("L16", 66, -94, 180, "south"),
+]
+MAX_HOUSES = 4 + len(STREET_LOTS)      # Phase 1 capacity (was a silent [:8] - the 9th house vanished without a word)
+_asked = brief.get("houses") or DEFAULT_BRIEF["houses"]
+if len(_asked) > MAX_HOUSES:
+    print("WARNING: %d houses asked, Phase %d holds %d - the rest wait for the next phase of the plat" % (len(_asked), PLAT_PHASE, MAX_HOUSES))
+HOUSE_SPECS = [norm_house(i, h) for i, h in enumerate(_asked[:MAX_HOUSES])]
 if not HOUSE_SPECS:
     HOUSE_SPECS = [norm_house(i, h) for i, h in enumerate(DEFAULT_BRIEF["houses"])]
 LAYOUT = "straight" if str(brief.get("layout", "")).lower().startswith("str") else "cul-de-sac"
+ROAD_MIN = CROSS_Y - 3.5                 # the main road runs from the bulb down into the cross street
 TREE_N = {"few": 4, "some": 8, "many": 14}.get(str(brief.get("trees", "some")).lower(), 8)
 NAME = str(brief.get("name") or "Neighbourhood")[:40]
 PLACEMENTS = [e for e in (brief.get("placements") or []) if isinstance(e, dict)]          # warehouse GLBs to stand at anchors
@@ -436,8 +465,19 @@ def place(asset, pos, yaw_deg=None, height=None, scale=None, lod="LOD1"):
 # ---------------------------------------------------------------- feature parts (decision 23: build what is asked, fill the gaps)
 # One helper per part, all in the house's LOCAL frame (front = -y, the door at c["door_x"]) and placed through the
 # house matrix X exactly like every other house part. A helper returns None when built, or a short reason when it can't.
+# Painted parts (John, 2026-09-10: "a red door shouldn't be hard" — his cottage came back "Couldn't build: red front
+# door"). A colour word within a few words before a paintable part repaints that part; the nearest colour wins, so
+# "white siding with a red front door" paints the door red, not white.
+PART_PAINT = {"red": (0.72, 0.10, 0.10), "blue": (0.15, 0.30, 0.65), "navy": (0.08, 0.12, 0.35), "green": (0.15, 0.45, 0.22),
+              "yellow": (0.95, 0.80, 0.20), "black": (0.05, 0.05, 0.06), "white": (0.93, 0.92, 0.88), "grey": (0.55, 0.55, 0.55),
+              "gray": (0.55, 0.55, 0.55), "brown": (0.40, 0.24, 0.12), "orange": (0.90, 0.45, 0.10), "pink": (0.95, 0.55, 0.65),
+              "purple": (0.45, 0.20, 0.55), "teal": (0.10, 0.50, 0.50), "burgundy": (0.45, 0.08, 0.15), "maroon": (0.45, 0.08, 0.15),
+              "turquoise": (0.20, 0.70, 0.70)}
+PAINT_PART_RX = r"\b(garage door|front door|door|trim|shutters?)\b"
+PAINT_RX = r"\b(%s)\b[\w\s,'-]{0,24}?%s" % ("|".join(PART_PAINT), PAINT_PART_RX)
 FEATURES = [("columns", r"\bcolumns?\b|\bpillars?\b|\bportico\b|\bcolonnade\b"), ("pediment", r"\bpediments?\b"),
-            ("dormers", r"\bdormers?\b"), ("chimneys", r"\bchimneys?\b"), ("balcony", r"\bbalcon(y|ies)\b"), ("shutters", r"\bshutters?\b")]
+            ("dormers", r"\bdormers?\b"), ("chimneys", r"\bchimneys?\b"), ("balcony", r"\bbalcon(y|ies)\b"), ("shutters", r"\bshutters?\b"),
+            ("paint", PAINT_RX)]
 COLUMNS_RX = dict(FEATURES)["columns"]   # so the porch/canopy code can tell a portico is coming before the features loop runs
 WORDNUM = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8}
 WHITE = solid("Classical White", (0.94, 0.93, 0.90), 0.5)       # columns, entablature, pediments, railings
@@ -569,6 +609,31 @@ def feat_shutters(c, ph):
     if not len(bm.verts):
         bm.free(); return "no front windows to shutter"
     finish(c["hn"] + " Shutters", bm, SHUTTER, c["X"])
+
+def feat_paint(c, ph):
+    """Repaint named parts: every '<colour> ... <door|garage door|trim|shutters>' in the phrase swaps that part's
+    material for a solid of that colour. Runs after the parts exist (the features loop follows the door and the
+    garage), so it finds them by name in COL. Returns None when something was painted, else the reason."""
+    hn = c["hn"]; painted = []
+    for m in re.finditer(PAINT_PART_RX, ph, re.I):
+        before = ph[max(0, m.start() - 30):m.start()].lower()
+        colours = [w for w in re.findall(r"[a-z]+", before) if w in PART_PAINT]
+        if not colours:
+            continue
+        colour, part = colours[-1], m.group(1).lower()
+        names = {"door": (hn + " Door", hn + " Door Panel"), "front door": (hn + " Door", hn + " Door Panel"),
+                 "garage door": (hn + " Garage Door",), "shutter": (hn + " Shutters",), "shutters": (hn + " Shutters",)}.get(part)
+        if part == "trim":
+            objs = [o for o in COL.objects if o.name.startswith(hn + " ") and o.data and o.data.materials and o.data.materials[0] == c["TRIM"][0]]
+        else:
+            objs = [o for o in COL.objects if o.name in names]
+        if not objs:
+            continue
+        mat = solid("%s %s %s" % (hn, colour.title(), part.title()), PART_PAINT[colour], 0.45)[0]
+        for o in objs:
+            o.data.materials.clear(); o.data.materials.append(mat)
+        painted.append("%s %s" % (colour, part))
+    return None if painted else "no paintable part named (door, garage door, trim, shutters)"
 
 # ---------------------------------------------------------------- the house builder
 def bay_grid(W, target=2.6):
@@ -789,7 +854,7 @@ def house(hn, pos, yaw_deg, spec):
         elif k == "pediment":
             why = None if "columns" in kinds else feat_pediment(c, ph)       # with columns it sits on the portico
         else:
-            why = {"dormers": feat_dormers, "chimneys": feat_chimneys, "balcony": feat_balcony, "shutters": feat_shutters}[k](c, ph)
+            why = {"dormers": feat_dormers, "chimneys": feat_chimneys, "balcony": feat_balcony, "shutters": feat_shutters, "paint": feat_paint}[k](c, ph)
         if why:
             UNBUILT.append({"house": hn, "phrase": "%s (%s)" % (ph, why)})
         elif ph not in built:
@@ -807,18 +872,36 @@ BULB = Vector((0, 10, 0)); RB = 11.0
 HARD_RECTS = []              # (a, b, width) segments the grass must avoid
 box("Ground", (0, 0, -0.06), (400, 400, 0.1), GRASS)
 if LAYOUT == "cul-de-sac":
-    box("Road", (0, -22, 0.02), (7.0, 46, 0.04), ASPHALT)
+    PAINT = solid("Paint", (0.9, 0.85, 0.5), 0.6)
+    # main street: from the bulb (y=1) south into the cross street at CROSS_Y
+    box("Road", (0, (1.0 + ROAD_MIN) / 2, 0.02), (7.0, 1.0 - ROAD_MIN, 0.04), ASPHALT)
     disc("Bulb", (BULB.x, BULB.y, 0.0), RB, 0.04, ASPHALT)
+    _walk_end = CROSS_Y + 4.7                                   # main-street curbs/sidewalks stop at the cross street's sidewalk
     for sx in (-1, 1):
-        box("Curb", (sx * 3.65, -22.5, 0.075), (0.3, 45, 0.15), CURB)
-        box("Sidewalk", (sx * 4.55, -22.5, 0.07), (1.5, 45, 0.14), CONCRETE)
+        box("Curb", (sx * 3.65, _walk_end / 2, 0.075), (0.3, -_walk_end, 0.15), CURB)
+        box("Sidewalk", (sx * 4.55, _walk_end / 2, 0.07), (1.5, -_walk_end, 0.14), CONCRETE)
     ring("Bulb Curb", BULB, RB, RB + 0.3, -70, 250, 0.15, CURB, 64)
     ring("Bulb Sidewalk", BULB, RB + 0.3, RB + 1.8, -70, 250, 0.14, CONCRETE, 64)
     disc("Island Curb", (BULB.x, BULB.y, 0.0), 3.6, 0.15, CURB, 48)
     disc("Island Lawn", (BULB.x, BULB.y, 0.15), 3.3, 0.04, GRASS, 48)
-    for y in (-40, -30, -20, -10, -4):
-        box("Center line", (0, y, 0.045), (0.15, 3.0, 0.005), solid("Paint", (0.9, 0.85, 0.5), 0.6))
-    ROAD_Y = (-45.0, 1.0)
+    for y in list(range(int(CROSS_Y) + 9, -45, 10)) + [-40, -30, -20, -10, -4]:
+        box("Center line", (0, y, 0.045), (0.15, 3.0, 0.005), PAINT)
+    # the cross street (Phase 1 plat): east-west along CROSS_Y, the T open where the main street enters
+    _cx = (CROSS_X[0] + CROSS_X[1]) / 2; _cl = CROSS_X[1] - CROSS_X[0]
+    box("Cross Street", (_cx, CROSS_Y, 0.02), (_cl, 7.0, 0.04), ASPHALT)
+    for sy, label in ((1, "N"), (-1, "S")):
+        if sy > 0:   # north side: two runs, leaving the junction open for the main street
+            for x0, x1, k in ((CROSS_X[0], -4.7, "W"), (4.7, CROSS_X[1], "E")):
+                box("Cross Curb %s%s" % (label, k), ((x0 + x1) / 2, CROSS_Y + sy * 3.65, 0.075), (x1 - x0, 0.3, 0.15), CURB)
+                box("Cross Sidewalk %s%s" % (label, k), ((x0 + x1) / 2, CROSS_Y + sy * 4.55, 0.07), (x1 - x0, 1.5, 0.14), CONCRETE)
+        else:
+            box("Cross Curb %s" % label, (_cx, CROSS_Y + sy * 3.65, 0.075), (_cl, 0.3, 0.15), CURB)
+            box("Cross Sidewalk %s" % label, (_cx, CROSS_Y + sy * 4.55, 0.07), (_cl, 1.5, 0.14), CONCRETE)
+    for x in range(int(CROSS_X[0]) + 6, int(CROSS_X[1]) - 5, 8):
+        if abs(x) > 6:
+            box("Cross Center line", (x, CROSS_Y, 0.045), (3.0, 0.15, 0.005), PAINT)
+    HARD_RECTS.append((Vector((CROSS_X[0], CROSS_Y, 0)), Vector((CROSS_X[1], CROSS_Y, 0)), 7.0 + 2 * 4.9))   # grass keeps off it
+    ROAD_Y = (ROAD_MIN, 1.0)
 else:
     box("Road", (0, 0, 0.02), (7.0, 100, 0.04), ASPHALT)
     for sx in (-1, 1):
@@ -840,20 +923,62 @@ N = len(HOUSE_SPECS)
 if LAYOUT == "cul-de-sac":
     nb = min(N, 4)
     angles = [90.0] if nb == 1 else [145.0 - 110.0 * i / (nb - 1) for i in range(nb)]
-    for a in angles:
+    for bi, a in enumerate(angles):
+        rnd.seed(zlib.crc32(("bulb|%d" % bi).encode("utf-8")))          # a bulb lot's jitter is its own, not the brief's
         p = spot(a, 25.0 + rnd.uniform(-1.0, 1.0)); slots.append((p, facing(p), "bulb"))
-    for p, yaw, side in [((-22.0, -22.0, 0.0), 90.0, "west"), ((22.0, -22.0, 0.0), 270.0, "east"),
-                         ((-22.0, -40.0, 0.0), 90.0, "west"), ((22.0, -40.0, 0.0), 270.0, "east")][:max(0, N - nb)]:
-        slots.append((p, yaw, side))
+    for lot in STREET_LOTS[:max(0, N - nb)]:                     # houses beyond the bulb fill the plat in lot order
+        slots.append((lot["pos"], lot["yaw"], lot["side"]))
+    plat_lots = [dict(lot, house=None) for lot in STREET_LOTS]
+    for i in range(nb, N):
+        plat_lots[i - nb]["house"] = "H%d" % (i + 1)
+    _next = next((l for l in plat_lots if l["house"] is None), None)
 else:
-    ys = [-34.0, -12.0, 10.0, 32.0]
-    for i in range(N):
+    def straight_lot(i):
+        ys = [-34.0, -12.0, 10.0, 32.0]
         side = -1 if i % 2 == 0 else 1
-        slots.append(((side * 22.0, ys[(i // 2) % 4], 0.0), 90.0 if side < 0 else 270.0, "west" if side < 0 else "east"))
+        return ((side * 22.0, ys[(i // 2) % 4], 0.0), 90.0 if side < 0 else 270.0, "west" if side < 0 else "east")
+    for i in range(N):
+        slots.append(straight_lot(i))
+    p, yaw, side = straight_lot(N)
+    plat_lots = [{"id": "S%d" % (i + 1), "pos": s[0], "yaw": s[1], "side": s[2], "house": "H%d" % (i + 1)} for i, s in enumerate(slots)]
+    _next = {"id": "S%d" % (N + 1), "pos": p, "yaw": yaw, "side": side, "house": None}
+    plat_lots.append(_next)
 
 HOUSES = []
 for i, (spec, (p, yaw, side)) in enumerate(zip(HOUSE_SPECS, slots)):
     h = house("H%d" % (i + 1), p, yaw, spec); h["side"] = side; HOUSES.append(h)
+
+# ---------------------------------------------------------------- signboards on every empty lot (decision 25)
+# A "coming soon" sign - two posts and a board - stands 7 m in front of the lot centre, facing the street. The world
+# hangs the four candidate pictures on the node named "Lot <id> Sign Board"; the judge and the ledger see it by name.
+SIGN_POST = solid("Sign Post", (0.24, 0.17, 0.11), 0.7)
+SIGN_BOARD = solid("Sign Board", (0.93, 0.90, 0.84), 0.55)
+def signboard(lot):
+    yaw = math.radians(lot["yaw"]); fx, fy = math.sin(yaw), -math.cos(yaw)         # the front direction for this yaw
+    cx, cy = lot["pos"][0] + fx * 7.0, lot["pos"][1] + fy * 7.0
+    ax, ay = math.cos(yaw), math.sin(yaw)                                          # along the board (perpendicular to the front)
+    for s in (-1, 1):
+        box("Lot %s Sign Post %s" % (lot["id"], "L" if s < 0 else "R"), (cx + ax * s * 1.1, cy + ay * s * 1.1, 1.1), (0.12, 0.12, 2.2), SIGN_POST, None, yaw)
+    box("Lot %s Sign Board" % lot["id"], (cx, cy, 1.55), (2.6, 0.06, 1.5), SIGN_BOARD, None, yaw)
+    HARD_RECTS.append((Vector((cx - ax * 1.3, cy - ay * 1.3, 0)), Vector((cx + ax * 1.3, cy + ay * 1.3, 0)), 1.0))   # grass/props keep off
+    return (round(cx, 3), round(cy, 3))
+for lot in plat_lots:
+    lot["sign"] = signboard(lot) if lot["house"] is None else None
+
+# LOTS is exported into the world manifest (run-brief.py): every lot of the plat, occupied or empty, its sign, and the
+# next free one. Builder space is Z-up (x, y); the GLB the world reads is Y-up with glb.z = -builder.y.
+def _lot_rec(l):
+    p = l["pos"]
+    return {"id": l["id"], "x": round(p[0], 3), "y": round(p[1], 3), "yaw_deg": round(l["yaw"], 2), "side": l["side"],
+            "house": l["house"], "sign": ("Lot %s Sign Board" % l["id"]) if l.get("sign") else None,
+            "glb": [round(p[0], 3), 0.0, round(-p[1], 3)],
+            "sign_glb": [l["sign"][0], 0.0, -l["sign"][1]] if l.get("sign") else None}
+LOTS = {"frame": "builder Z-up (x,y); glb Y-up, glb.z = -y", "phase": PLAT_PHASE,
+        "lots": [_lot_rec(l) for l in plat_lots],
+        "next": _lot_rec(_next) if _next else None,
+        "empty": sum(1 for l in plat_lots if l["house"] is None),
+        "road_y": [ROAD_MIN, 1.0] if LAYOUT == "cul-de-sac" else [-50.0, 50.0],
+        "cross_street": {"y": CROSS_Y, "x": list(CROSS_X)} if LAYOUT == "cul-de-sac" else None}
 
 def slab(name, a, b, width, mt, z=0.0, h=0.12):
     a, b = Vector(a), Vector(b); d = b - a; L = d.length + 0.4
@@ -867,6 +992,8 @@ def kerb_point(h, p):
     """Where a driveway/path from house h meets the street edge."""
     if h["side"] == "bulb":
         return to_bulb_edge(p, RB + 1.9)
+    if h["side"] in ("north", "south"):                       # a lot on the cross street: the kerb is a y line
+        return Vector((p.x, CROSS_Y + (5.4 if h["side"] == "north" else -5.4), 0))
     sx = -5.4 if h["side"] == "west" else 5.4
     return Vector((sx, p.y, 0))
 
@@ -900,8 +1027,12 @@ def mailbox(pos, yaw_deg):
     box("Mailbox", (0, 0, 1.12), (0.5, 0.25, 0.24), solid("MB", (rnd.uniform(0.1, 0.5), rnd.uniform(0.1, 0.3), rnd.uniform(0.1, 0.5)), 0.4, 0.6), X)
 
 for h in HOUSES:
+    rnd.seed(zlib.crc32(("mailbox|" + h["name"]).encode("utf-8")))     # a mailbox keeps its colour between versions
     if h["side"] == "bulb":
         e = to_bulb_edge(h["door"], RB + 2.4); mailbox(e, math.degrees(math.atan2((e - BULB).y, (e - BULB).x)))
+    elif h["side"] in ("north", "south"):
+        sy = 5.9 if h["side"] == "north" else -5.9
+        mailbox((h["door"].x + 1.5, CROSS_Y + sy, 0), 0 if h["side"] == "north" else 180)
     else:
         sx = -5.9 if h["side"] == "west" else 5.9
         mailbox((sx, h["door"].y - 1.5, 0), 90 if h["side"] == "west" else 270)
@@ -955,8 +1086,9 @@ def add_models():
         h = rnd.choice(with_garage)
         mid = (h["garage"] + kerb_point(h, h["garage"])) / 2 + Vector((0, 0, 0.16))
         place("covered_car", tuple(mid), yaw_deg=math.degrees(h["yaw"]) + (0 if h["side"] == "bulb" else 0))
-    place("fire_hydrant", (4.9, ROAD_Y[0] + 33, 0), yaw_deg=0, scale=1.0)
-    place("metal_trash_can", (-5.0, ROAD_Y[0] + 12, 0), scale=0.9)
+    _road0 = -45.0 if LAYOUT == "cul-de-sac" else ROAD_Y[0]      # pinned to the original street end: props never move when the street grows
+    place("fire_hydrant", (4.9, _road0 + 33, 0), yaw_deg=0, scale=1.0)
+    place("metal_trash_can", (-5.0, _road0 + 12, 0), scale=0.9)
 
 def prop_radius(root):
     r = 0.0
@@ -1008,6 +1140,7 @@ def qa_props():
     for f in fixed + dropped: print("   ", f)
 
 if WANT_MODELS:
+    rnd.seed(zlib.crc32(("grounds|%s|%d" % (LAYOUT, PLAT_PHASE)).encode("utf-8")))   # trees and props stay where they were unless a new house needs the spot
     add_models()
     qa_props()
 

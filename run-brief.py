@@ -121,7 +121,7 @@ def sun_block(sky_key):
     return {"position": [round(v, 2) for v in pos], "intensity": 2.0 if warm else {"clear": 3.2, "cloudy": 1.6, "overcast": 0.9}.get(sky_key, 3.0),
             "color": "#ffb070" if warm else "#fff3df"}
 
-def export_world(brief, houses, shelf=None, sky_id=None, sky_key="clear"):
+def export_world(brief, houses, shelf=None, sky_id=None, sky_key="clear", lots=None):
     if WORLDS is None:
         raise RuntimeError("THE world's folder was not found. Looked in: " + " | ".join(WORLDS_CANDIDATES))
     name = brief.get("name") or "New Neighbourhood"
@@ -181,6 +181,7 @@ def export_world(brief, houses, shelf=None, sky_id=None, sky_key="clear"):
                  "It was stale Starlite boilerplate that nobody had ever checked against the viewer code.]",
         "display_name": name, "world_id": "neighbourhood-%s-v%d" % (slug, ver), "model": "neighbourhood-builder", "version": ver,
         "brief": brief, "houses": houses, "environment": environment,
+        "lots": lots,     # decision 25: every house's lot + the NEXT free lot (glb coords) where the signboard stands
         "assets": {"splats": {"spz_urls": {}, "semantics_metadata": {"metric_scale_factor": 1, "ground_plane_offset": 0, "flip_y": False}},
                    "mesh": {"collider_mesh_url": "local: %s.glb (%.1f MB, visible geometry AND walkable collider)" % (V, mb)},
                    "imagery": {"pano_url": ""}, "thumbnail_url": ""}}
@@ -238,11 +239,12 @@ try:
             put(stage="picture %d/%d" % (i + 1, len(houses)), images=[c["image"] for c in cands])
         log.write("PREVIEW DONE %.1fs\n" % (time.time() - t0)); log.close()
         put(status="done", stage="done", preview=True, candidates=cands, houses=summary, fallbacks=fallbacks, unbuilt_features=unbuilt, placed=placed,
-            images=[os.path.basename(c["image"]) for c in cands], seconds=round(time.time() - t0, 1))
+            images=[os.path.basename(c["image"]) for c in cands], seconds=round(time.time() - t0, 1), lots=ns.get("LOTS"))
         sys.exit(0)
 
     put(stage="handing the place to your world", houses=summary, fallbacks=fallbacks, unbuilt_features=unbuilt, placed=placed)
-    slug, out, mb, ver = export_world(brief, summary, shelf=ns.get("SHELF"), sky_id=ns.get("sky_id"), sky_key=str(ns.get("sky_key", "clear")))
+    slug, out, mb, ver = export_world(brief, summary, shelf=ns.get("SHELF"), sky_id=ns.get("sky_id"), sky_key=str(ns.get("sky_key", "clear")),
+                                      lots=ns.get("LOTS"))
     put(stage="world ready - rendering pictures", world=slug, world_url="/%s?v=%d" % (slug, ver), version=ver, world_ready=True, glb_mb=round(mb, 1),
         world_seconds=round(time.time() - t0, 1))
 

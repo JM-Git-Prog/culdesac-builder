@@ -277,9 +277,11 @@ def normalise(b, text="", revise=False, candidates=False, pinned=None):
         for i, h in enumerate(out["houses"]):
             h["garage"] = "right" if i % 2 == 0 else "left"
     # variety guard: a street of five with two styles repeating is not "different homes".
-    # NOT on the candidates path (2026-09-04): there the three houses are three takes on ONE house
-    # John asked for, so a shared style is the POINT, not a defect. Left on, this guard rewrote
-    # candidate 3 of an all-colonial set into a ranch — undoing the prompt fix at the code layer.
+    # NOT on the candidates path (2026-09-04): the guard is for a STREET John did not design, and it
+    # rewrote candidate 3 of an all-colonial set into a ranch — undoing the prompt fix at the code
+    # layer. Still skipped under decision 28 (2026-09-11), for the same reason and not the old one:
+    # the candidates prompt now chooses each departure deliberately and V17 labels it, so a guard that
+    # reassigns a style behind its back would make the label lie.
     # A house John PICKED off the garage wall is pinned and never rewritten (2026-09-05). He chose
     # a white colonial with a shingle roof and a full-width porch; his street already had two
     # colonials, so this guard made his the third, reassigned it to georgian, and gave it a clay
@@ -352,17 +354,59 @@ def place_brief(slug):
     return brief, idx[-1]
 
 
+def place_lot(slug):
+    """The NEXT empty lot of an existing place, as its latest manifest lists it (`lots.next`: id, glb, sign_glb, yaw_deg…) —
+    decision 25 (2026-09-10): the four candidate pictures stand on that lot's signboard in the world, so V17 needs to know
+    which lot that is when it hangs them. None when the place predates the plat export or has no empty lot left."""
+    try:
+        if not _SLUG.match(slug or ""): return None
+        wd = os.path.join(WORLDS, slug, "output", "world")
+        idx = sorted(int(f.split("-")[0]) for f in os.listdir(wd) if re.match(r"^\d+-world\.json$", f))
+        if not idx: return None
+        man = json.load(open(os.path.join(wd, "%d-world.json" % idx[-1]), encoding="utf-8"))
+        lots = man.get("lots")
+        nxt = lots.get("next") if isinstance(lots, dict) else None
+        return nxt if isinstance(nxt, dict) and nxt.get("id") else None
+    except Exception as e:
+        log("place_lot %s: %s" % (slug, e)); return None
+
+
 # ------------------------------------------------------------------ candidates (2026-09-03, John: "pictures first, then I choose")
-CANDIDATES_SYSTEM = ("You design houses for a homeowner. From the instruction, propose THREE candidates that are the SAME house rendered three ways, "
-                     "not three different houses. " + TEMPLATE +
-                     '\nWhatever the instruction fixes - "style", "stories", "wall", "wall_color", "roof", "porch", or which side "garage" is on - must '
-                     'be IDENTICAL across houses[0], houses[1] and houses[2]; never vary a field the instruction named, even to make the candidates '
-                     'look different. Vary only what the instruction leaves unspecified, and failing that only fine interpretive detail (proportion, '
-                     'spacing, trim, or a different shade within the named wall_color) that no field captures. '
-                     'Every phrase from the instruction that no field can hold goes into that house\'s "features" (or the street\'s "other_features"), '
-                     'and the same "features" / "other_features" entries must appear in ALL THREE of houses[0], houses[1] and houses[2] - not only the '
-                     'first candidate; this is a hard requirement. '
-                     '\nAlways: "layout": "straight", "house_count": 3, exactly three entries in "houses", "name": "Candidates".')
+_WORDS = {1: "ONE", 2: "TWO", 3: "THREE", 4: "FOUR"}
+
+
+def candidates_system(n=3):
+    """The candidates prompt for n takes (3 by default; V17's signboard asks for 4 - decision 25, 2026-09-10:
+    "four pictures of candidate houses stand on a signboard on the lot"). Same rules whatever n is.
+
+    DECISION 28 (John, 2026-09-11): these are n DIFFERENT houses now, not n takes on one. The Sam Loop
+    found why on its first night - a simulated ten-year-old read the signboard four times and reported
+    "four identical white colonial house pictures", because the old rule let the model vary only what the
+    sentence left unspecified, and a kid specifies colour, walls, roof and floors before he ever gets to
+    the sign. So: houses[0] is exactly what he asked for, and every other candidate deliberately departs
+    from it in one or two named attributes. Which attributes changed is NOT written by the model - V17
+    diffs each candidate's summary against houses[0] and puts that on the picture's label
+    (`candidate_labels` in src/web/v17_neighbourhood_routes.py), so the disclosure cannot be wrong."""
+    n = max(1, min(4, int(n or 3)))
+    word = _WORDS[n]; low = word.lower()
+    idx = ", ".join("houses[%d]" % i for i in range(n - 1)) + (" and houses[%d]" % (n - 1) if n > 1 else "")
+    others = ", ".join("houses[%d]" % i for i in range(1, n)) or "the others"
+    return ("You design houses for a homeowner. From the instruction, propose %s candidates: houses[0] is EXACTLY what the "
+            "instruction asks for, and %s are genuinely DIFFERENT houses he might like better. " % (word, others) + TEMPLATE +
+            '\nhouses[0] is faithful: every attribute the instruction fixes - "style", "stories", "wall", "wall_color", "roof", '
+            '"porch", which side "garage" is on - is exactly as stated, and anything it leaves open is the typical choice. '
+            '\nEACH OF %s DEPARTS from houses[0] in ONE or TWO of those attributes, and a different one or two each time, so the '
+            '%s pictures read as %s different houses on a signboard rather than one house drawn %s times. Change the attribute '
+            'OUTRIGHT - a different style, a different wall material, a different roof, one more or one fewer storey, a porch '
+            'where there was none - never a shade of the same thing. Keep every other attribute identical to houses[0], so what '
+            'changed is obvious. Never depart in more than two attributes: a candidate is an alternative, not a different order. '
+            'Every phrase from the instruction that no field can hold goes into that house\'s "features" (or the street\'s "other_features"), '
+            'and the same "features" / "other_features" entries must appear in ALL %s of %s - not only the '
+            'first candidate; this is a hard requirement. '
+            '\nAlways: "layout": "straight", "house_count": %d, exactly %s entries in "houses", "name": "Candidates".' % (others, low, low, low, word, idx, n, low))
+
+
+CANDIDATES_SYSTEM = candidates_system(3)
 
 
 # A PHOTO with the order (2026-09-03, John pasted a red-brick Georgian with a columned portico):
@@ -411,12 +455,14 @@ def vision_house(image_path, text):
 
 
 def candidates_brief(text, n=3, image=None):
-    """A 3-house straight street whose houses are three takes on the order — rendered, never built."""
+    """An n-house straight street whose houses are n takes on the order — rendered, never built (3 on the garage wall, 4 on the lot's signboard)."""
+    n = max(1, min(4, int(n or 3)))
     ref = vision_house(image, text) if image else None
-    system = CANDIDATES_SYSTEM
+    system = candidates_system(n)
     if ref:
+        others = ", ".join("houses[%d]" % i for i in range(1, n)) or "the others"
         system += ("\nREFERENCE HOUSE read from the homeowner's photo: " + json.dumps(ref) +
-                   " — houses[0] must be exactly this; houses[1] and houses[2] keep its style and stories and vary only wall_color, roof or porch.")
+                   " — houses[0] must be exactly this; %s keep its style and stories and vary only wall_color, roof or porch." % others)
     try:
         errors = []
         for tag in pick_models(text):
@@ -442,7 +488,9 @@ def candidates_brief(text, n=3, image=None):
 # ------------------------------------------------------------------ the gaps ledger (Decision 22, tools/capability-gaps.CONTRACT.md section 1)
 GAPS = r"C:\Users\JohnM\Artificial Intelligence\Projects\CEO-of-My-Life-Inc\CEO-3D-World\tools\capability-gaps.jsonl"
 # the house features build-neighbourhood.py makes itself (its FEATURES table) — never gaps
-BUILDER_MAKES = re.compile(r"\b(columns?|pillars?|portico|colonnade|pediments?|dormers?|chimneys?|balcon(y|ies)|shutters?)\b", re.I)
+BUILDER_MAKES = re.compile(r"\b(columns?|pillars?|portico|colonnade|pediments?|dormers?|chimneys?|balcon(y|ies)|shutters?)\b"
+                           r"|\b(red|blue|navy|green|yellow|black|white|grey|gray|brown|orange|pink|purple|teal|burgundy|maroon|turquoise)\b"
+                           r"[\w\s,'-]{0,24}?\b(garage door|front door|door|trim|shutters?)\b", re.I)   # painted parts (build-neighbourhood.py feat_paint, 2026-09-10)
 
 
 def note_gaps(jid, brief, base, current=None):
@@ -490,9 +538,24 @@ def note_gaps(jid, brief, base, current=None):
 
 
 # ------------------------------------------------------------------ jobs
-def start_job(text, base=None, house=None, preview=False, image=None):
+JOB_TIMEOUT_S = 20 * 60      # a neighbourhood build takes ~75 s; v8 on 2026-09-10 sat 70+ min in the GLB export with no way to see or stop it
+
+def _watch(proc, jid, jd):
+    """Kill a UPBGE job that outlives JOB_TIMEOUT_S and say so in its status - a hung export is a failed job, not a forever job."""
+    try:
+        proc.wait(timeout=JOB_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        try: proc.kill()
+        except Exception: pass
+        s = job_status(jid); s.update(status="failed", stage="timed out after %d min - UPBGE killed; read upbge-console.txt" % (JOB_TIMEOUT_S // 60))
+        json.dump(s, open(os.path.join(jd, "status.json"), "w"))
+        log("job %s: timed out after %ds - killed" % (jid, JOB_TIMEOUT_S))
+
+def start_job(text, base=None, house=None, preview=False, image=None, rebuild=False, count=3):
     """A build (fresh, or the next version of `base`), a candidates PREVIEW (pictures only), or —
-    with `house` — the deterministic build of a house John chose on the garage wall (no model)."""
+    with `house` — the deterministic build of a house John chose on the garage wall (no model);
+    `rebuild` = the next version of `base` from its CURRENT brief, untouched — no model, nothing added
+    (the builder's code moved, the order did not)."""
     if BLENDER is None:
         raise RuntimeError("UPBGE not found. Looked in: " + " | ".join(BLENDER_CANDIDATES))
     with _lock:
@@ -502,8 +565,13 @@ def start_job(text, base=None, house=None, preview=False, image=None):
         current = None
         if base:
             current, _ = place_brief(base)
-        if preview:
-            brief = candidates_brief(text, image=image if image and os.path.isfile(image) else None)
+        if rebuild:
+            if current is None: raise RuntimeError("a rebuild needs the place to rebuild (base)")
+            brief = json.loads(json.dumps(current))
+            brief["source"] = "rebuild - same brief, current builder"; brief["revised_from"] = current.get("request", "")
+            brief["request"] = text or current.get("request", "")
+        elif preview:
+            brief = candidates_brief(text, n=count, image=image if image and os.path.isfile(image) else None)
         elif house is not None:
             if current is None: raise RuntimeError("a chosen house needs the place it joins (base)")
             brief = json.loads(json.dumps(current))
@@ -521,7 +589,8 @@ def start_job(text, base=None, house=None, preview=False, image=None):
             + (["--preview"] if preview else (["--slug", base] if base else []))
         flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(subprocess, "CREATE_NO_WINDOW", 0)
         out = open(os.path.join(jd, "upbge-console.txt"), "w", encoding="utf-8")
-        subprocess.Popen(cmd, stdout=out, stderr=subprocess.STDOUT, creationflags=flags, cwd=HERE)
+        proc = subprocess.Popen(cmd, stdout=out, stderr=subprocess.STDOUT, creationflags=flags, cwd=HERE)
+        threading.Thread(target=_watch, args=(proc, jid, jd), daemon=True).start()
         _current["job"] = jid
         log("job %s%s%s: %d houses, %s, sky %s (brief by %s)" % (jid, " PREVIEW" if preview else "", " on " + base if base else "", brief["house_count"], brief["layout"], brief["sky"], brief["source"]))
         brief["gaps"] = note_gaps(jid, brief, base, current)      # in the reply only (brief.json stays the pure order form): what was noted for the workshop this time
@@ -628,21 +697,29 @@ class H(BaseHTTPRequestHandler):
     def do_POST(self):
         # /api/build       {text, base?}            a build, or the next version of `base`
         # /api/build       {text, base, house}      the house John chose on the garage wall — no model, appended as-is
-        # /api/candidates  {text}                   three takes on the order, rendered as pictures only (--preview)
-        if self.path not in ("/api/build", "/api/candidates"):
+        # /api/candidates  {text, base?, count?}    three takes on the order (four when count=4 - the lot's signboard), rendered as pictures only (--preview);
+        #                                          the answer carries `lot` = the base place's next empty lot (decision 25) when the place has one
+        # /api/rebuild     {base}                   the next version of `base` from its current brief - no model, nothing added
+        if self.path not in ("/api/build", "/api/candidates", "/api/rebuild"):
             return self.send(404, {"error": "not found"})
         n = int(self.headers.get("Content-Length") or 0)
         try:
             body = json.loads(self.rfile.read(n).decode("utf-8"))
             text = str(body.get("text", "")).strip(); base = str(body.get("base") or "").strip() or None
-            if not text:
+            rebuild = self.path == "/api/rebuild"
+            if rebuild and not base:
+                return self.send(400, {"error": "say which place to rebuild (base)"})
+            if not text and not rebuild:
                 return self.send(400, {"error": "say what you want built"})
             house = body.get("house") if isinstance(body.get("house"), dict) else None
             preview = self.path == "/api/candidates"
             image = str(body.get("image") or "").strip() or None          # a photo John pasted into V17 (absolute path)
-            jid, brief = start_job(text, base, house=house, preview=preview, image=image)
+            try: count = max(1, min(4, int(body.get("count") or 3)))         # how many takes a candidates job renders (3 = the garage wall, 4 = the signboard)
+            except (TypeError, ValueError): count = 3
+            jid, brief = start_job(text, base, house=house, preview=preview, image=image, rebuild=rebuild, count=count)
             return self.send(200, {"job": jid, "brief": brief, "status": "building", "base": base, "preview": preview,
-                                   "couldnt": couldnt_sentence(brief.get("swapped"), None)})
+                                   "couldnt": couldnt_sentence(brief.get("swapped"), None),
+                                   "lot": place_lot(base) if (preview and base) else None})
         except Exception as e:
             return self.send(409 if "already running" in str(e) else 500, {"error": str(e)})
 
